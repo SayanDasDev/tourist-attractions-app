@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tourist Attractions Map</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .loading {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            z-index: 1000;
+            display: none;
+            font-size: 14px;
+        }
+
+        .attraction-marker {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+            background-size: cover;
+            background-position: center;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        .attraction-marker:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            border-color: #4285f4;
+            z-index: 999;
+        }
+
+        .attraction-marker.no-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        .info-window {
+            position: absolute;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            max-width: 300px;
+            z-index: 1000;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            display: none;
+        }
+
+        .info-window::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: white;
+        }
+
+        .info-window h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .info-window .rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+
+        .info-window .stars {
+            color: #ffa500;
+        }
+
+        .info-window .reviews {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .search-container {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+        }
+
+        .search-box {
+            background: white;
+            padding: 10px;
+            border-radius: 25px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 300px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .search-input {
+            border: none;
+            outline: none;
+            flex: 1;
+            padding: 5px 10px;
+            font-size: 16px;
+        }
+
+        .location-btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s;
+        }
+
+        .location-btn:hover {
+            background: #3367d6;
+        }
+
+        .controls h2 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .attraction-count {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff4444;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 400px;
+            text-align: center;
+            z-index: 1001;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="loading" id="loading">Loading attractions...</div>
+
+    <div class="search-container">
+        <div class="search-box">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search for a location (e.g., Paris, Dakshineswar)">
+            <button class="location-btn" id="locationBtn" title="Go to my location">.</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <h2>Tourist Attractions</h2>
+        <div class="attraction-count" id="attractionCount">Move the map to see attractions</div>
+    </div>
+    <div class="error-message" id="errorMessage"></div>
+
+    <script>
+        let map;
+        let markers = [];
+        let currentInfoWindow = null;
+        let isLoading = false;
+        let geocoder;
+        let userLocation = null;
+
+        // Replace with your Google Maps API key
+        const GOOGLE_MAPS_API_KEY = 'XXX';
+
+        function initMap() {
+            // Initialize geocoder
+            geocoder = new google.maps.Geocoder();
+
+            // Try to get user's current location
+            getCurrentLocation();
+        }
+
+        function getCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        initializeMap(userLocation);
+                    },
+                    (error) => {
+                        console.log('Geolocation error:', error);
+                        // Fallback
+                        const fallbackLocation = { lat: 40.7128, lng: -74.0060 };
+                        initializeMap(fallbackLocation);
+                    }
+                );
+            } else {
+                // fallback
+                const fallbackLocation = { lat: 40.7128, lng: -74.0060 };
+                initializeMap(fallbackLocation);
+            }
+        }
+
+        function initializeMap(center) {
+            // Initialize map
+            map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 15,
+                center: center,
+                styles: [
+                    {
+                        featureType: 'poi',
+                        elementType: 'labels',
+                        stylers: [{ visibility: 'off' }]
+                    }
+                ],
+                mapTypeControl: true,
+                streetViewControl: true,
+                fullscreenControl: true
+            });
+
+            // Load attractions when map becomes idle
+            map.addListener('idle', loadAttractions);
+
+            // Setup search functionality
+            setupSearch();
+
+            // Setup location button
+            setupLocationButton();
+
+            // Initial load
+            loadAttractions();
+        }
+
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+
+            // Search on Enter key
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchLocation(searchInput.value);
+                }
+            });
+        }
+
+        function setupLocationButton() {
+            const locationBtn = document.getElementById('locationBtn');
+            locationBtn.addEventListener('click', () => {
+                if (userLocation) {
+                    map.setCenter(userLocation);
+                    map.setZoom(15);
+                } else {
+                    getCurrentLocation();
+                }
+            });
+        }
+
+        function searchLocation(query) {
+            if (!query.trim()) return;
+
+            geocoder.geocode({ address: query }, (results, status) => {
+                if (status === 'OK' && results[0]) {
+                    const location = results[0].geometry.location;
+                    map.setCenter(location);
+                    map.setZoom(15);
+
+                    // Clear search input
+                    document.getElementById('searchInput').value = '';
+                } else {
+                    showError(`Could not find location: ${query}`);
+                }
+            });
+        }
+
+        async function loadAttractions() {
+            if (isLoading) return;
+
+            const bounds = map.getBounds();
+            if (!bounds) return;
+
+            isLoading = true;
+            showLoading(true);
+
+            const ne = bounds.getNorthEast();
+            const sw = bounds.getSouthWest();
+
+            try {
+                const response = await fetch(`/attractions?north=${ne.lat()}&south=${sw.lat()}&east=${ne.lng()}&west=${sw.lng()}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const attractions = await response.json();
+                clearMarkers();
+                createMarkers(attractions);
+                updateAttractionCount(attractions.length);
+
+            } catch (error) {
+                console.error('Error loading attractions:', error);
+                showError('Failed to load attractions. Please check your API configuration.');
+            } finally {
+                isLoading = false;
+                showLoading(false);
+            }
+        }
+
+        function clearMarkers() {
+            markers.forEach(marker => {
+                if (marker.overlay) {
+                    marker.overlay.setMap(null);
+                }
+            });
+            markers = [];
+
+            if (currentInfoWindow) {
+                currentInfoWindow.style.display = 'none';
+                currentInfoWindow = null;
+            }
+        }
+
+        function createMarkers(attractions) {
+            attractions.forEach(attraction => {
+                const marker = createCustomMarker(attraction);
+                markers.push(marker);
+            });
+        }
+
+        function createCustomMarker(attraction) {
+            // Create custom overlay
+            class CustomMarker extends google.maps.OverlayView {
+                constructor(attraction) {
+                    super();
+                    this.attraction = attraction;
+                    this.position = new google.maps.LatLng(attraction.lat, attraction.lng);
+                }
+
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.className = 'attraction-marker';
+
+                    if (this.attraction.photo_url) {
+                        this.div.style.backgroundImage = `url(${this.attraction.photo_url})`;
+                    } else {
+                        this.div.classList.add('no-image');
+                        this.div.textContent = this.attraction.name.substring(0, 15) + (this.attraction.name.length > 15 ? '...' : '');
+                    }
+
+                    // Add click event
+                    this.div.addEventListener('click', () => {
+                        this.showInfoWindow();
+                    });
+
+                    // Add to map
+                    const panes = this.getPanes();
+                    panes.overlayMouseTarget.appendChild(this.div);
+                }
+
+                draw() {
+                    const overlayProjection = this.getProjection();
+                    const point = overlayProjection.fromLatLngToDivPixel(this.position);
+
+                    if (point && this.div) {
+                        this.div.style.left = point.x + 'px';
+                        this.div.style.top = point.y + 'px';
+                    }
+                }
+
+                onRemove() {
+                    if (this.div && this.div.parentNode) {
+                        this.div.parentNode.removeChild(this.div);
+                    }
+                }
+
+                showInfoWindow() {
+                    // Hide previous info window
+                    if (currentInfoWindow) {
+                        currentInfoWindow.style.display = 'none';
+                    }
+
+                    // Create new info window
+                    const infoWindow = document.createElement('div');
+                    infoWindow.className = 'info-window';
+                    infoWindow.innerHTML = `
+                        <h3>${this.attraction.name}</h3>
+                        <div class="rating">
+                            <span class="stars">${'*'.repeat(Math.floor(this.attraction.rating))}${'-'.repeat(5 - Math.floor(this.attraction.rating))}</span>
+                            <span>${this.attraction.rating.toFixed(1)}</span>
+                        </div>
+                        <div class="reviews">${this.attraction.user_ratings_total.toLocaleString()} reviews</div>
+                    `;
+
+                    // Position info window relative to the marker div
+                    const rect = this.div.getBoundingClientRect();
+                    const mapRect = document.getElementById('map').getBoundingClientRect();
+
+                    // Calculate position relative to the map container
+                    const leftPos = rect.left - mapRect.left + (rect.width / 2);
+                    const topPos = rect.top - mapRect.top - 10; // 10px above the marker
+
+                    infoWindow.style.left = leftPos + 'px';
+                    infoWindow.style.top = topPos + 'px';
+                    infoWindow.style.display = 'block';
+
+                    document.getElementById('map').appendChild(infoWindow);
+                    currentInfoWindow = infoWindow;
+
+                    // Auto hide after 5 seconds
+                    setTimeout(() => {
+                        if (currentInfoWindow === infoWindow) {
+                            infoWindow.style.display = 'none';
+                            currentInfoWindow = null;
+                        }
+                    }, 5000);
+                }
+            }
+
+            const overlay = new CustomMarker(attraction);
+            overlay.setMap(map);
+
+            return { overlay, attraction };
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            loading.style.display = show ? 'block' : 'none';
+        }
+
+        function updateAttractionCount(count) {
+            const countElement = document.getElementById('attractionCount');
+            countElement.textContent = `${count} attractions with 500+ reviews`;
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('errorMessage');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        // Hide info window when clicking on map
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.attraction-marker') && !e.target.closest('.info-window')) {
+                if (currentInfoWindow) {
+                    currentInfoWindow.style.display = 'none';
+                    currentInfoWindow = null;
+                }
+            }
+        });
+
+        // Initialize map when page loads
+        window.initMap = initMap;
+    </script>
+
+    <!-- Load Google Maps API -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=XXXcallback=initMap&libraries=geometry,places"></script>
+</body>
+</html>
