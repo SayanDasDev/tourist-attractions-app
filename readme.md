@@ -9,16 +9,15 @@
     ```
     
 2. **Set Environment Variable**:
-  ```bash
-	cp .env.example .env
-  ```
-  set `GOOGLE_PLACES_API_KEY=your_google_places_api_key_here` to your API Key in the `.env` file
-
-
-
-
-# Edit .env and add your actual API key
-GOOGLE_PLACES_API_KEY=your_actual_api_key_here
+      ```bash
+      cp .env.example .env
+      ```
+      
+      Edit `.env` and add your actual API key
+      
+      ```
+      GOOGLE_PLACES_API_KEY=your_actual_api_key_here
+      ```
 
 3. **Run the Backend**:
     
